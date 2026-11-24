@@ -177,9 +177,9 @@ void setup() {
   BLEService svc = server.createService(SVC_UUID);
   if (!svc) halt("createService");
 
-  ctrlChr = svc.createCharacteristic(CTRL_UUID, BLEProperty::Write, BLEPermission::ReadWriteOpen);
-  pkChr = svc.createCharacteristic(PK_UUID, BLEProperty::Notify, BLEPermission::ReadOpen);
-  ctChr = svc.createCharacteristic(CT_UUID, BLEProperty::Write | BLEProperty::WriteNR, BLEPermission::ReadWriteOpen);
+  ctrlChr = svc.createCharacteristic(CTRL_UUID, BLEProperty::Write, BLEPermission::WriteOpen);
+  pkChr = svc.createCharacteristic(PK_UUID, BLEProperty::Notify, BLEPermission::None);
+  ctChr = svc.createCharacteristic(CT_UUID, BLEProperty::Write | BLEProperty::WriteNR, BLEPermission::WriteOpen);
   resChr = svc.createCharacteristic(RES_UUID, BLEProperty::Read | BLEProperty::Notify, BLEPermission::ReadOpen);
   if (!ctrlChr || !pkChr || !ctChr || !resChr) halt("createCharacteristic");
 
