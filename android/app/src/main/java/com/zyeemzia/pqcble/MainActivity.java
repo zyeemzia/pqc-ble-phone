@@ -70,7 +70,7 @@ public class MainActivity extends Activity {
     static final long IDLE_BASELINE_MS = 10000, GAP_MS = 200;
 
     private TextView log;
-    private EditText nField, startField;
+    private EditText nField, startField, endField;
     private Button quick, full, stop;
     private volatile boolean stopReq = false;
     private volatile String phase = "setup";
@@ -96,6 +96,11 @@ public class MainActivity extends Activity {
         startField = new EditText(this);
         startField.setInputType(InputType.TYPE_CLASS_NUMBER);
         startField.setText("1");
+        TextView eLabel = new TextView(this);
+        eLabel.setText("End at cell (1-36):");
+        endField = new EditText(this);
+        endField.setInputType(InputType.TYPE_CLASS_NUMBER);
+        endField.setText("36");
         quick = new Button(this); quick.setText("Quick test (10 handshakes, MTU 517)");
         full = new Button(this); full.setText("Full sweep (4 MTU x 3 priority x 3 clock)");
         stop = new Button(this); stop.setText("Stop"); stop.setEnabled(false);
@@ -103,7 +108,7 @@ public class MainActivity extends Activity {
         log.setTextIsSelectable(true);
         ScrollView sv = new ScrollView(this);
         sv.addView(log);
-        root.addView(nLabel); root.addView(nField); root.addView(sLabel); root.addView(startField); root.addView(quick); root.addView(full); root.addView(stop);
+        root.addView(nLabel); root.addView(nField); root.addView(sLabel); root.addView(startField); root.addView(eLabel); root.addView(endField); root.addView(quick); root.addView(full); root.addView(stop);
         root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
 
@@ -128,10 +133,13 @@ public class MainActivity extends Activity {
         int sc;
         try { sc = Integer.parseInt(startField.getText().toString().trim()); } catch (Exception e) { sc = 1; }
         final int startCell = quickRun ? 1 : Math.max(1, sc);
+        int ec;
+        try { ec = Integer.parseInt(endField.getText().toString().trim()); } catch (Exception e) { ec = 36; }
+        final int endCell = quickRun ? 36 : ec;
         stopReq = false;
         quick.setEnabled(false); full.setEnabled(false); stop.setEnabled(true);
         worker = new Thread(() -> {
-            try { run(quickRun, perCell, startCell); }
+            try { run(quickRun, perCell, startCell, endCell); }
             catch (Exception e) { say("RUN FAILED: " + e); }
             finally {
                 phase = "done";
@@ -158,7 +166,7 @@ public class MainActivity extends Activity {
         return d;
     }
 
-    void run(boolean quickRun, int perCell, int startCell) throws Exception {
+    void run(boolean quickRun, int perCell, int startCell, int endCell) throws Exception {
         String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
         File dir = new File(getExternalFilesDir(null), "run_" + stamp + (quickRun ? "_quick" : ""));
         if (!dir.mkdirs()) throw new Exception("cannot create " + dir);
@@ -169,7 +177,8 @@ public class MainActivity extends Activity {
             meta.println("android=" + Build.VERSION.RELEASE + " sdk=" + Build.VERSION.SDK_INT);
             meta.println("soc=" + Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL);
             meta.println("crypto=BouncyCastle bcprov-jdk18on 1.87 ML-KEM-768");
-            meta.println("per_cell=" + perCell + " quick=" + quickRun + " start_cell=" + startCell);
+            meta.println("per_cell=" + perCell + " quick=" + quickRun + " start_cell=" + startCell + " end_cell=" + endCell);
+            meta.println("mtu_method=ESP32 preferred MTU set via CTRL M before each connection; phone requests 517 (MTU 23: no request)");
             meta.println("idle_baseline_ms=" + IDLE_BASELINE_MS + " gap_ms=" + GAP_MS);
             meta.println("screen=on (FLAG_KEEP_SCREEN_ON)");
             meta.println("current_sign_convention=raw BatteryManager.CURRENT_NOW microamps (vendor-specific sign)");
@@ -197,15 +206,23 @@ public class MainActivity extends Activity {
             for (int mtuReq : mtus) for (int pi : prioIdx) for (int mhz : mhzs) {
                 cell++;
                 String cellId = "m" + mtuReq + "_" + PRIO_NAMES[pi] + "_f" + mhz;
-                if (cell < startCell) continue;
+                if (cell < startCell || cell > endCell) continue;
                 boolean cellDone = false;
                 for (int attempt = 1; attempt <= 3 && !cellDone; attempt++) {
                     if (stopReq) return;
                     try {
                         if (link == null || !link.connected || linkMtu != mtuReq) {
                             if (link != null) { link.close(); Thread.sleep(1500); }
+                            // Android 14+ always negotiates 517 whatever requestMtu asks,
+                            // so the ESP32 caps its own preferred MTU for the next
+                            // connection; the exchange then settles on min(517, cap).
+                            BleLink pre = new BleLink();
+                            pre.open(this, dev, 23);
+                            pre.write(true, new byte[]{'M', (byte) (mtuReq & 0xff), (byte) (mtuReq >> 8)}, true);
+                            pre.close();
+                            Thread.sleep(1500);
                             link = new BleLink();
-                            link.open(this, dev, mtuReq);
+                            link.open(this, dev, mtuReq == 23 ? 23 : 517);
                             linkMtu = mtuReq;
                             say("Connected, MTU requested " + mtuReq + " got " + link.mtu);
                         }

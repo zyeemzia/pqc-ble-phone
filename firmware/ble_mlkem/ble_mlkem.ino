@@ -16,6 +16,7 @@
 // GATT service 7a1e0001-...:
 //   CTRL  7a1e0002  Write        'K'            start a handshake
 //                                'F' <mhz u16>  set CPU clock (80/160/240) between handshakes
+//                                'M' <mtu u16>  preferred ATT MTU for the next connection
 //   PK    7a1e0003  Notify       public key, in chunks of <= MTU-3 bytes
 //   CT    7a1e0004  Write / WriteNR  ciphertext, in chunks, in order
 //   RES   7a1e0005  Read/Notify  20 B result, little-endian:
@@ -68,6 +69,7 @@ static volatile uint16_t mtu = 23;
 static volatile uint16_t intervalUnits = 0;   // x 1.25 ms
 static volatile bool startReq = false;
 static volatile uint16_t freqReq = 0;
+static volatile uint16_t mtuCapReq = 0;
 static volatile size_t ctLen = 0;
 static volatile bool ctOverflow = false;
 static volatile int64_t ctFirstUs = 0, ctLastUs = 0;
@@ -222,6 +224,7 @@ void setup() {
     intervalUnits = conn.getInterval();
     if (n >= 1 && d[0] == 'K') startReq = true;
     else if (n >= 3 && d[0] == 'F') freqReq = (uint16_t)(d[1] | (d[2] << 8));
+    else if (n >= 3 && d[0] == 'M') mtuCapReq = (uint16_t)(d[1] | (d[2] << 8));
   });
 
   ctChr.onWrite([](BLECharacteristic c, const BLEConnInfo &conn) {
@@ -250,6 +253,15 @@ void loop() {
     // 80 MHz is the floor that keeps the radio and APB clock unchanged.
     bool ok = (f == 80 || f == 160 || f == 240) && setCpuFrequencyMhz(f);
     Serial.printf("# cpu_mhz=%u set_%s\n", (unsigned)getCpuFrequencyMhz(), ok ? "ok" : "rejected");
+  }
+  if (mtuCapReq) {
+    // Preferred ATT MTU for the NEXT connection: the exchange settles on
+    // min(phone, ESP32), so this is how the study sets 185/247 when Android
+    // (14+) always asks for 517.
+    uint16_t m = mtuCapReq;
+    mtuCapReq = 0;
+    bool ok = (m >= 23 && m <= 517) && BLE.setMTU(m);
+    Serial.printf("# mtu_cap=%u set_%s\n", (unsigned)m, ok ? "ok" : "rejected");
   }
   if (startReq && connected) {
     startReq = false;
