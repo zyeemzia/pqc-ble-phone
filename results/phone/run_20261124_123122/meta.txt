@@ -1,0 +1,8 @@
+model=Xiaomi 25078RA3EA
+android=16 sdk=36
+soc=Mediatek MT6769
+crypto=BouncyCastle bcprov-jdk18on 1.87 ML-KEM-768
+per_cell=100 quick=false start_cell=1
+idle_baseline_ms=10000 gap_ms=200
+screen=on (FLAG_KEEP_SCREEN_ON)
+current_sign_convention=raw BatteryManager.CURRENT_NOW microamps (vendor-specific sign)
