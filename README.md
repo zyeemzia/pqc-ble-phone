@@ -2,7 +2,7 @@
 
 ML-KEM-768 key establishment over Bluetooth Low Energy between an Android phone
 (central) and an ESP32 (peripheral): latency, fragmentation and energy.
-Target: a 4-page letter (IEEE Sensors Letters or IEEE Communications Letters).
+Paper: "Post-Quantum Key Establishment over Bluetooth Low Energy Between a Smartphone and an ESP32: Link Parameters Dominate" (letter draft in `paper/`).
 Separate from `pqc-deception-journal`; no RL or deception content here.
 
 Rule: every number in the paper comes from a CSV produced by this repo. Never invent results.
@@ -42,3 +42,9 @@ Measures: end-to-end latency on the phone, per-phase split, ESP32 compute, phone
 - `results/phone/run_20261124_133502`: cells 10-27 rerun with the MTU set from the ESP32 side (CTRL `M` + reconnect): real MTU 185 / 247, 1800/1800 verified.
 - `results/phone/run_20261124_120634`: pilot (first 3 cells, 300/300), interrupted by a board reset; not used.
 - `results/esp32/*.log`: ESP32 serial (BLE lines incl. connection interval: 12/32/90 units = 15/40/112.5 ms for HIGH/BALANCED/LOW_POWER).
+
+## Reproduce the analysis
+`python tools/analyze.py` (numpy, matplotlib) reads the run CSVs and writes `results/analysis/`.
+
+## License
+Code: MIT (see `LICENSE`). PQClean sources in `firmware/ble_mlkem/` keep their own license (`LICENSE_PQClean`).

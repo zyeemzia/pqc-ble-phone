@@ -6,3 +6,5 @@ android/build/
 android/app/build/
 android/local.properties
 android/.idea/
+paper_overleaf.zip
+results/phone/*_quick/
