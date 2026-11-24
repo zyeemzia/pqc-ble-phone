@@ -1,0 +1,25 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.zyeemzia.pqcble'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.zyeemzia.pqcble'
+        minSdk 33
+        targetSdk 36
+        versionCode 1
+        versionName '0.1'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packaging {
+        resources { excludes += ['META-INF/versions/**', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/LICENSE*'] }
+    }
+}
+
+dependencies {
+    // ML-KEM-768 (FIPS 203) encapsulation and SHA3-256 on the phone.
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.87'
+}
