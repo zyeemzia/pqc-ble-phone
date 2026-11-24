@@ -52,9 +52,9 @@ on how the link is configured as much as on the cryptography.
 
 Prior work measured ML-KEM on microcontrollers in isolation, including the
 ESP32~\cite{segatz2025kyberesp32,azevedo2025multicore,nagy2025mlkem}, and over
-BLE between two embedded boards or a PC and a
-board~\cite{liu2024quantumble,liu2026energy}, where the connection interval
-was held fixed. Javaid et al.~\cite{javaid2026nfc} paired a phone with an
+BLE with nRF52840 boards~\cite{liu2024quantumble,liu2026energy}, which
+varied the ATT MTU and data length; the energy study used a single 50\,ms
+connection interval and did not vary the clock~\cite{liu2026energy}. Javaid et al.~\cite{javaid2026nfc} paired a phone with an
 ESP32-S3 but moved the Kyber exchange to an NFC side channel, so the BLE link
 did not carry it. To our knowledge no study has measured ML-KEM carried over
 BLE between a phone and an ESP32 while varying the MTU, the connection

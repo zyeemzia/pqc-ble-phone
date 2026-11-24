@@ -25,3 +25,8 @@ Question: has anyone measured ML-KEM key establishment over BLE between an
 - Read all four papers in full; cite them; state the delta in our own words.
 - Re-search (IEEE Xplore, ACM DL, Google Scholar) for "post-quantum BLE smartphone" right before submission.
 - Verify every reference (authors, venue, pages, DOI) against the publisher record.
+
+## Full-text check (2026-11-24, later)
+- Liu et al. 2026 (arXiv 2602.18708v2, read in full): nRF52840 DK, Zephyr, PQClean, PPK2 at 100 kHz, 3.0 V; ML-KEM-512/768/1024 over a GATT service (PK by Notify, CT by Write); 1M PHY; one 50 ms connection interval; ATT MTU / LL PDU (DLE) varied; no CPU clock value or sweep; energy only, no latency; second device model not named. Does not contradict our claim.
+- Liu et al. 2024 (IoTDI): QUT eprint now returns 404; full text not re-read. Paper text claims only what is verified for it (nRF52840, MTU/data length varied).
+- Failed handshake (full sweep, m185_LOW_POWER_f80 #31, effective MTU 517): complete transfer (3 notifs, 3 writes, 1088 B), ESP32 status O, decaps 41.0 ms (normal: 40.9-41.3 ms). Only the tag differed. Consistent with ML-KEM implicit rejection of a corrupted ciphertext; cause not determinable (phone did not log its own tag).
