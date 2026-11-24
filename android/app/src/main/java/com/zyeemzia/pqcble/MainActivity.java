@@ -70,7 +70,7 @@ public class MainActivity extends Activity {
     static final long IDLE_BASELINE_MS = 10000, GAP_MS = 200;
 
     private TextView log;
-    private EditText nField;
+    private EditText nField, startField;
     private Button quick, full, stop;
     private volatile boolean stopReq = false;
     private volatile String phase = "setup";
@@ -91,6 +91,11 @@ public class MainActivity extends Activity {
         nField = new EditText(this);
         nField.setInputType(InputType.TYPE_CLASS_NUMBER);
         nField.setText("100");
+        TextView sLabel = new TextView(this);
+        sLabel.setText("Start at cell (1-36, to resume):");
+        startField = new EditText(this);
+        startField.setInputType(InputType.TYPE_CLASS_NUMBER);
+        startField.setText("1");
         quick = new Button(this); quick.setText("Quick test (10 handshakes, MTU 517)");
         full = new Button(this); full.setText("Full sweep (4 MTU x 3 priority x 3 clock)");
         stop = new Button(this); stop.setText("Stop"); stop.setEnabled(false);
@@ -98,7 +103,7 @@ public class MainActivity extends Activity {
         log.setTextIsSelectable(true);
         ScrollView sv = new ScrollView(this);
         sv.addView(log);
-        root.addView(nLabel); root.addView(nField); root.addView(quick); root.addView(full); root.addView(stop);
+        root.addView(nLabel); root.addView(nField); root.addView(sLabel); root.addView(startField); root.addView(quick); root.addView(full); root.addView(stop);
         root.addView(sv, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
 
@@ -120,10 +125,13 @@ public class MainActivity extends Activity {
         int n;
         try { n = Integer.parseInt(nField.getText().toString().trim()); } catch (Exception e) { n = 100; }
         final int perCell = quickRun ? 10 : Math.max(1, n);
+        int sc;
+        try { sc = Integer.parseInt(startField.getText().toString().trim()); } catch (Exception e) { sc = 1; }
+        final int startCell = quickRun ? 1 : Math.max(1, sc);
         stopReq = false;
         quick.setEnabled(false); full.setEnabled(false); stop.setEnabled(true);
         worker = new Thread(() -> {
-            try { run(quickRun, perCell); }
+            try { run(quickRun, perCell, startCell); }
             catch (Exception e) { say("RUN FAILED: " + e); }
             finally {
                 phase = "done";
@@ -150,7 +158,7 @@ public class MainActivity extends Activity {
         return d;
     }
 
-    void run(boolean quickRun, int perCell) throws Exception {
+    void run(boolean quickRun, int perCell, int startCell) throws Exception {
         String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
         File dir = new File(getExternalFilesDir(null), "run_" + stamp + (quickRun ? "_quick" : ""));
         if (!dir.mkdirs()) throw new Exception("cannot create " + dir);
@@ -161,7 +169,7 @@ public class MainActivity extends Activity {
             meta.println("android=" + Build.VERSION.RELEASE + " sdk=" + Build.VERSION.SDK_INT);
             meta.println("soc=" + Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL);
             meta.println("crypto=BouncyCastle bcprov-jdk18on 1.87 ML-KEM-768");
-            meta.println("per_cell=" + perCell + " quick=" + quickRun);
+            meta.println("per_cell=" + perCell + " quick=" + quickRun + " start_cell=" + startCell);
             meta.println("idle_baseline_ms=" + IDLE_BASELINE_MS + " gap_ms=" + GAP_MS);
             meta.println("screen=on (FLAG_KEEP_SCREEN_ON)");
             meta.println("current_sign_convention=raw BatteryManager.CURRENT_NOW microamps (vendor-specific sign)");
@@ -169,7 +177,7 @@ public class MainActivity extends Activity {
 
         PrintWriter hs = new PrintWriter(new FileWriter(new File(dir, "handshakes.csv")));
         hs.println("cell,mtu_req,mtu,priority,mhz_req,i,t_start_ns,total_ms,pk_rx_ms,encaps_ms,ct_tx_ms,res_wait_ms,"
-                + "pk_notifs,ct_writes,esp_status,esp_cpu_mhz,esp_keygen_us,esp_pk_send_us,esp_ct_rx_us,esp_decaps_us,tag_ok,error");
+                + "pk_notifs,ct_writes,esp_status,esp_cpu_mhz,esp_keygen_us,esp_pk_send_us,esp_ct_rx_us,esp_decaps_us,tag_ok,error,attempt");
         startSampler(new File(dir, "samples.csv"));
 
         BluetoothDevice dev = scan();
@@ -180,43 +188,56 @@ public class MainActivity extends Activity {
         int cell = 0, ok = 0, fail = 0;
         SecureRandom rng = new SecureRandom();
 
+        // Cells run in a fixed order; a dropped link reconnects and the cell is
+        // repeated (up to 3 attempts). Rows from an abandoned attempt stay in the
+        // CSV with their attempt number, so nothing is silently discarded.
+        BleLink link = null;
+        int linkMtu = -1;
         try {
-            for (int mtuReq : mtus) {
-                BleLink link = new BleLink();
-                link.open(this, dev, mtuReq);
-                say("Connected, MTU requested " + mtuReq + " got " + link.mtu);
-                try {
-                    for (int pi : prioIdx) {
+            for (int mtuReq : mtus) for (int pi : prioIdx) for (int mhz : mhzs) {
+                cell++;
+                String cellId = "m" + mtuReq + "_" + PRIO_NAMES[pi] + "_f" + mhz;
+                if (cell < startCell) continue;
+                boolean cellDone = false;
+                for (int attempt = 1; attempt <= 3 && !cellDone; attempt++) {
+                    if (stopReq) return;
+                    try {
+                        if (link == null || !link.connected || linkMtu != mtuReq) {
+                            if (link != null) { link.close(); Thread.sleep(1500); }
+                            link = new BleLink();
+                            link.open(this, dev, mtuReq);
+                            linkMtu = mtuReq;
+                            say("Connected, MTU requested " + mtuReq + " got " + link.mtu);
+                        }
                         link.priority(PRIOS[pi]);
                         Thread.sleep(2000); // let the connection update settle
-                        for (int mhz : mhzs) {
-                            if (stopReq) return;
-                            cell++;
-                            String cellId = "m" + mtuReq + "_" + PRIO_NAMES[pi] + "_f" + mhz;
-                            link.write(true, new byte[]{'F', (byte) (mhz & 0xff), (byte) (mhz >> 8)}, true);
-                            Thread.sleep(500);
-                            phase = "idle:" + cellId;
-                            Thread.sleep(IDLE_BASELINE_MS);
-                            say("Cell " + cell + " " + cellId);
-                            for (int i = 1; i <= perCell && !stopReq; i++) {
-                                phase = "hs:" + cellId;
-                                String row = handshake(link, rng, cellId, mtuReq, PRIO_NAMES[pi], mhz, i);
-                                phase = "gap:" + cellId;
-                                hs.println(row);
-                                if (lastTagOk) ok++; else fail++;
-                                if (!link.connected) throw new Exception("link lost");
-                                Thread.sleep(GAP_MS);
-                            }
-                            hs.flush();
-                            say("  ok=" + ok + " fail=" + fail);
+                        link.write(true, new byte[]{'F', (byte) (mhz & 0xff), (byte) (mhz >> 8)}, true);
+                        Thread.sleep(500);
+                        phase = "idle:" + cellId;
+                        Thread.sleep(IDLE_BASELINE_MS);
+                        say("Cell " + cell + " " + cellId + (attempt > 1 ? " (attempt " + attempt + ")" : ""));
+                        for (int i = 1; i <= perCell && !stopReq; i++) {
+                            phase = "hs:" + cellId;
+                            String row = handshake(link, rng, cellId, mtuReq, PRIO_NAMES[pi], mhz, i);
+                            phase = "gap:" + cellId;
+                            hs.println(row + "," + attempt);
+                            if (lastTagOk) ok++; else fail++;
+                            if (!link.connected) throw new Exception("link lost at handshake " + i);
+                            Thread.sleep(GAP_MS);
                         }
+                        cellDone = true;
+                    } catch (Exception e) {
+                        phase = "error:" + cellId;
+                        say("  cell " + cell + " attempt " + attempt + " failed: " + e.getMessage());
+                        if (link != null) { link.close(); link = null; }
+                        Thread.sleep(3000);
                     }
-                } finally {
-                    link.close();
-                    Thread.sleep(1500);
+                    hs.flush();
                 }
+                say("  ok=" + ok + " fail=" + fail + (cellDone ? "" : "  CELL SKIPPED"));
             }
         } finally {
+            if (link != null) link.close();
             hs.close();
             phase = "done";
             say("Finished. ok=" + ok + " fail=" + fail + "\nFiles in " + dir);
