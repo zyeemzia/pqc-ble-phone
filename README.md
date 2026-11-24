@@ -1,5 +1,7 @@
 # pqc-ble-phone
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24507281.svg)](https://doi.org/10.5281/zenodo.24507281)
+
 ML-KEM-768 key establishment over Bluetooth Low Energy between an Android phone
 (central) and an ESP32 (peripheral): latency, fragmentation and energy.
 Paper: "Post-Quantum Key Establishment over Bluetooth Low Energy Between a Smartphone and an ESP32: Link Parameters Dominate" (letter draft in `paper/`).
