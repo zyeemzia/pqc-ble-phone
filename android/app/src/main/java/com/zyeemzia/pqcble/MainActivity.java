@@ -235,12 +235,13 @@ public class MainActivity extends Activity {
             link.write(true, new byte[]{'K'}, true);
             byte[] pk = new byte[PK_BYTES];
             int got = 0;
+            StringBuilder lens = new StringBuilder();
             while (got < PK_BYTES) {
                 byte[] c = link.pkChunks.poll(10, TimeUnit.SECONDS);
-                if (c == null) throw new Exception("pk timeout at " + got + " B");
+                if (c == null) throw new Exception("pk timeout at " + got + " B; chunks " + lens);
                 int n = Math.min(c.length, PK_BYTES - got);
                 System.arraycopy(c, 0, pk, got, n);
-                got += n; notifs++;
+                got += n; notifs++; lens.append(c.length).append('/');
             }
             t1 = SystemClock.elapsedRealtimeNanos();
             MLKEMPublicKeyParameters pub = new MLKEMPublicKeyParameters(MLKEMParameters.ml_kem_768, pk);
@@ -248,7 +249,8 @@ public class MainActivity extends Activity {
             byte[] ct = sw.getEncapsulation();
             byte[] ss = sw.getSecret();
             t2 = SystemClock.elapsedRealtimeNanos();
-            int chunk = Math.max(20, link.mtu - 3);
+            // ATT attribute values are capped at 512 B, so a 517 MTU still writes 512 B chunks.
+            int chunk = Math.min(512, Math.max(20, link.mtu - 3));
             for (int off = 0; off < CT_BYTES; off += chunk) {
                 int n = Math.min(chunk, CT_BYTES - off);
                 byte[] part = new byte[n];

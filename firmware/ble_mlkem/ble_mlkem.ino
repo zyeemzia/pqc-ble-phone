@@ -46,6 +46,10 @@ SET_LOOP_TASK_STACK_SIZE(48 * 1024);
 #define CT_BYTES PQCLEAN_MLKEM768_CLEAN_CRYPTO_CIPHERTEXTBYTES
 #define SS_BYTES PQCLEAN_MLKEM768_CLEAN_CRYPTO_BYTES
 #define RES_BYTES 20
+// ATT caps an attribute value at 512 B (Core Spec Vol 3 Part F 3.2.9). With
+// MTU 517 the PDU payload could be 514 B, but Android drops notifications longer
+// than 512 B (observed), so chunks are min(MTU-3, 512).
+#define PK_CHUNK_CAP 512
 
 static const BLEUUID SVC_UUID("7a1e0001-5c2b-4c7e-9f3a-1d2e3f405a01");
 static const BLEUUID CTRL_UUID("7a1e0002-5c2b-4c7e-9f3a-1d2e3f405a01");
@@ -74,14 +78,31 @@ static void putU32(uint8_t *p, uint32_t v) { for (int i = 0; i < 4; i++) p[i] = 
 
 // Notify one chunk to the connected phone, retrying while the stack's queue is
 // full. Returns false if the link is gone.
+// Notify one chunk and wait until the stack reports it sent (onStatus
+// SUCCESS_NOTIFY) before returning. Without this wait, back-to-back notify()
+// calls let the stack drop all but the last chunk (observed: the phone received
+// only the final 156 B of the 1184 B key). Returns false if the link is gone or
+// the stack reports an error.
+static volatile int notifyState = 0;   // 0 pending, 1 sent, -1 error
+static volatile uint32_t notifyCode = 0;
+
 static bool notifyChunk(BLECharacteristic &chr, const uint8_t *d, size_t n) {
+  BTStatus st = BTStatus::Fail;
   for (int tries = 0; tries < 2000; tries++) {
-    if (!connected) return false;
-    BTStatus st = chr.notify(connHandle, d, n);
-    if (st) return true;
+    if (!connected) { Serial.println("# notify: link down"); return false; }
+    notifyState = 0;
+    st = chr.notify(connHandle, d, n);
+    if (st) break;
     delay(1);
   }
-  return false;
+  if (!st) { Serial.printf("# notify: not accepted, len=%u status=%d\n", (unsigned)n, (int)st); return false; }
+  uint32_t w0 = millis();
+  while (notifyState == 0 && connected && millis() - w0 < 3000) delay(0);
+  if (notifyState != 1) {
+    Serial.printf("# notify: no send confirmation, len=%u state=%d code=%u\n", (unsigned)n, (int)notifyState, (unsigned)notifyCode);
+    return false;
+  }
+  return true;
 }
 
 static void sendResult(char status, uint32_t kg, uint32_t pkSend, uint32_t ctRx, uint32_t dec, uint8_t tag) {
@@ -109,12 +130,14 @@ static void runHandshake() {
   ctLen = 0; ctOverflow = false; ctFirstUs = 0; ctLastUs = 0;
   expectingCt = true;
   size_t chunk = (mtu > 3) ? (size_t)(mtu - 3) : 20;
+  if (chunk > PK_CHUNK_CAP) chunk = PK_CHUNK_CAP;
   t = esp_timer_get_time();
   for (size_t off = 0; off < PK_BYTES; off += chunk) {
     size_t n = min(chunk, (size_t)(PK_BYTES - off));
-    if (!notifyChunk(pkChr, pk + off, n)) { expectingCt = false; return; }
+    if (!notifyChunk(pkChr, pk + off, n)) { expectingCt = false; Serial.printf("# pk_send_failed off=%u chunk=%u mtu=%u\n", (unsigned)off, (unsigned)n, (unsigned)mtu); return; }
   }
   uint32_t pk_send_us = (uint32_t)(esp_timer_get_time() - t);
+  Serial.printf("# pk_sent chunk=%u mtu=%u us=%u\n", (unsigned)chunk, (unsigned)mtu, (unsigned)pk_send_us);
 
   // 3. wait for the full ciphertext
   uint32_t w0 = millis();
@@ -182,6 +205,13 @@ void setup() {
   ctChr = svc.createCharacteristic(CT_UUID, BLEProperty::Write | BLEProperty::WriteNR, BLEPermission::WriteOpen);
   resChr = svc.createCharacteristic(RES_UUID, BLEProperty::Read | BLEProperty::Notify, BLEPermission::ReadOpen);
   if (!ctrlChr || !pkChr || !ctChr || !resChr) halt("createCharacteristic");
+
+  auto onSt = [](BLECharacteristic &c, BLECharacteristic::NotifyStatus stt, uint32_t code) {
+    notifyCode = code;
+    notifyState = (stt == BLECharacteristic::SUCCESS_NOTIFY) ? 1 : -1;
+  };
+  pkChr.onStatus(onSt);
+  resChr.onStatus(onSt);
 
   ctrlChr.onWrite([](BLECharacteristic c, const BLEConnInfo &conn) {
     size_t n = 0;
