@@ -1,0 +1,4 @@
+mtu 23: intervals_ms [15.0, 40.0, 112.5]
+mtu 185: intervals_ms [15.0, 40.0, 112.5]
+mtu 247: intervals_ms [15.0, 40.0, 112.5]
+mtu 517: intervals_ms [15.0, 40.0, 112.5]

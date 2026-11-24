@@ -1,0 +1,4 @@
+cells=18 deltaI_CI_above_0=9 below_0=4 spans_0=5
+idle_mA range 223.5-421.0
+hs_mA range 240.1-344.2
+E_phone_mJ range 139.5-3713.0

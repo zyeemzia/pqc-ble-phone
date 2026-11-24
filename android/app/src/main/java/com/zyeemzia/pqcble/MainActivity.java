@@ -137,6 +137,7 @@ public class MainActivity extends Activity {
         try { ec = Integer.parseInt(endField.getText().toString().trim()); } catch (Exception e) { ec = 36; }
         final int endCell = quickRun ? 36 : ec;
         stopReq = false;
+        phase = "setup"; // a finished earlier run leaves "done", which would stop the new sampler at once
         quick.setEnabled(false); full.setEnabled(false); stop.setEnabled(true);
         worker = new Thread(() -> {
             try { run(quickRun, perCell, startCell, endCell); }
