@@ -35,3 +35,10 @@ completes GATT service discovery and drops the link after 30 s (reason 0x13). Th
 ## Experiment plan
 Factors: ATT MTU (23, 185, 247, 517), connection priority on Android (LOW_POWER / BALANCED / HIGH ~ interval), ESP32 clock (80/160/240 MHz). 100 handshakes per cell, all verified.
 Measures: end-to-end latency on the phone, per-phase split, ESP32 compute, phone battery current (BatteryManager CURRENT_NOW) with screen state fixed.
+
+## Data collected (2026-11-24, Xiaomi 25078RA3EA, Android 16, MediaTek MT6769; ESP32-D0WD-V3)
+- `results/phone/run_20261124_123122`: full 36-cell sweep, 3600 handshakes, 3599 verified (1 tag mismatch, m185_LOW_POWER_f80 #31).
+  **Android 16 negotiated MTU 517 when 185/247 was requested**, so its m185/m247 cells are effectively MTU 517 (`mtu` column). Use it for MTU 23 and 517 only.
+- `results/phone/run_20261124_133502`: cells 10-27 rerun with the MTU set from the ESP32 side (CTRL `M` + reconnect): real MTU 185 / 247, 1800/1800 verified.
+- `results/phone/run_20261124_120634`: pilot (first 3 cells, 300/300), interrupted by a board reset; not used.
+- `results/esp32/*.log`: ESP32 serial (BLE lines incl. connection interval: 12/32/90 units = 15/40/112.5 ms for HIGH/BALANCED/LOW_POWER).
